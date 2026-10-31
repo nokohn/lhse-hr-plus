@@ -1,0 +1,15 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "lhse-hr-plus",
+  "account_id": "cafe3d79fc7d8796843b960a8b29e5ae",
+  "compatibility_date": "2026-02-01",
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
+  "pages_build_output_dir": "./dist",
+  "vars": {
+    "ENVIRONMENT": "production",
+    "APP_NAME": "HR Plus+ LHSE Enterprise Management System",
+    "APP_EDITION": "Cloudflare Edge Enterprise"
+  }
+}

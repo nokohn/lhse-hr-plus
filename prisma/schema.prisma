@@ -1,0 +1,603 @@
+// Prisma Schema for HR Plus+ LHSE
+// Human Resource Management System for Lao Holding State Enterprise (LHSE)
+// Database: PostgreSQL
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Role {
+  SUPER_ADMIN
+  HR_ADMIN
+  EXECUTIVE
+  DEPT_HEAD
+  EMPLOYEE
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+}
+
+enum EmploymentType {
+  PERMANENT
+  PROBATION
+  CONTRACT
+  INTERN
+}
+
+enum EmployeeStatus {
+  ACTIVE
+  ON_LEAVE
+  SUSPENDED
+  RESIGNED
+  TERMINATED
+}
+
+enum AttendanceStatus {
+  PRESENT
+  LATE
+  EARLY_DEPARTURE
+  ABSENT
+  ON_LEAVE
+  HOLIDAY
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  RETURNED
+  CANCELLED
+}
+
+enum DisciplinarySeverity {
+  VERBAL_WARNING
+  FIRST_WRITTEN_WARNING
+  SECOND_WRITTEN_WARNING
+  FINAL_WARNING
+  SUSPENSION
+  TERMINATION
+}
+
+enum CandidateStage {
+  APPLIED
+  SCREENING
+  INTERVIEW
+  OFFERED
+  HIRED
+  REJECTED
+}
+
+// -----------------------------------------------------------------------------
+// MODULE 03: ORGANIZATION
+// -----------------------------------------------------------------------------
+model Branch {
+  id          String       @id @default(uuid())
+  code        String       @unique
+  nameEn      String
+  nameLao     String
+  location    String
+  managerName String?
+  phone       String?
+  isActive    Boolean      @default(true)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  departments Department[]
+  employees   Employee[]
+
+  @@map("branches")
+}
+
+model Department {
+  id             String       @id @default(uuid())
+  branchId       String
+  code           String       @unique
+  nameEn         String
+  nameLao        String
+  headEmployeeId String?
+  headName       String?
+  budget         Decimal?     @db.Decimal(15, 2)
+  isActive       Boolean      @default(true)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  branch         Branch       @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  positions      Position[]
+  employees      Employee[]
+  requisitions   RecruitmentRequisition[]
+
+  @@map("departments")
+}
+
+model Position {
+  id            String     @id @default(uuid())
+  departmentId  String
+  titleEn       String
+  titleLao      String
+  level         String
+  baseSalaryMin Decimal    @db.Decimal(15, 2)
+  baseSalaryMax Decimal    @db.Decimal(15, 2)
+  isActive      Boolean    @default(true)
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  department    Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  employees     Employee[]
+
+  @@map("positions")
+}
+
+// -----------------------------------------------------------------------------
+// MODULE 02: EMPLOYEES
+// -----------------------------------------------------------------------------
+model Employee {
+  id                    String         @id @default(uuid())
+  employeeCode          String         @unique // LHSE-XXXX
+  firstNameEn           String
+  lastNameEn            String
+  firstNameLao          String
+  lastNameLao           String
+  email                 String         @unique
+  phone                 String
+  gender                Gender
+  dateOfBirth           DateTime
+  nationalId            String         @unique
+  branchId              String
+  departmentId          String
+  positionId            String
+  reportingToId         String?
+  joiningDate           DateTime
+  employmentType        EmploymentType @default(PERMANENT)
+  status                EmployeeStatus @default(ACTIVE)
+  baseSalary            Decimal        @db.Decimal(15, 2) // LAK
+  bankName              String?
+  bankAccountNumber     String?
+  avatarUrl             String?
+  address               String?
+  education             String?
+  emergencyContactName  String?
+  emergencyContactPhone String?
+  createdAt             DateTime       @default(now())
+  updatedAt             DateTime       @updatedAt
+
+  branch                Branch         @relation(fields: [branchId], references: [id])
+  department            Department     @relation(fields: [departmentId], references: [id])
+  position              Position       @relation(fields: [positionId], references: [id])
+  reportingTo           Employee?      @relation("ReportingHierarchy", fields: [reportingToId], references: [id])
+  subordinates          Employee[]     @relation("ReportingHierarchy")
+
+  user                  User?
+  attendanceRecords     AttendanceRecord[]
+  attendanceCorrections AttendanceCorrection[]
+  leaveRequests         LeaveRequest[]
+  leaveBalances         LeaveBalance[]
+  payslips              Payslip[]
+  disciplinaryCases     DisciplinaryCase[]
+  expenseClaims         ExpenseClaim[]
+  evaluations           PerformanceEvaluation[]
+  assignedAssets        Asset[]
+
+  @@map("employees")
+}
+
+// -----------------------------------------------------------------------------
+// MODULE 04 & 05: ATTENDANCE & WORK SCHEDULE (NO OT!)
+// -----------------------------------------------------------------------------
+model Shift {
+  id         String   @id @default(uuid())
+  nameEn     String
+  nameLao    String
+  startTime  String   // e.g. "08:00"
+  endTime    String   // e.g. "17:00"
+  breakStart String   // e.g. "12:00"
+  breakEnd   String   // e.g. "13:00"
+  color      String   @default("#2563eb")
+  isDefault  Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  @@map("shifts")
+}
+
+model Holiday {
+  id          String   @id @default(uuid())
+  date        DateTime @db.Date
+  nameEn      String
+  nameLao     String
+  isRecurring Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  @@map("holidays")
+}
+
+model AttendanceRecord {
+  id              String           @id @default(uuid())
+  employeeId      String
+  date            DateTime         @db.Date
+  checkIn         String?
+  checkOut        String?
+  status          AttendanceStatus @default(PRESENT)
+  durationMinutes Int              @default(480)
+  source          String           @default("BIOMETRIC_SCANNER")
+  notes           String?
+  createdAt       DateTime         @default(now())
+
+  employee        Employee         @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@unique([employeeId, date])
+  @@map("attendance_records")
+}
+
+model AttendanceCorrection {
+  id               String         @id @default(uuid())
+  employeeId       String
+  date             DateTime       @db.Date
+  requestedCheckIn String
+  requestedCheckOut String
+  reason           String
+  status           ApprovalStatus @default(PENDING)
+  approverId       String?
+  approverComments String?
+  createdAt        DateTime       @default(now())
+
+  employee         Employee       @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@map("attendance_corrections")
+}
+
+// -----------------------------------------------------------------------------
+// MODULE 06: LEAVE MANAGEMENT
+// -----------------------------------------------------------------------------
+model LeaveType {
+  id               String         @id @default(uuid())
+  nameEn           String
+  nameLao          String
+  daysAllowed      Int
+  requiresDocument Boolean        @default(false)
+  isPaid           Boolean        @default(true)
+  color            String         @default("#3b82f6")
+  createdAt        DateTime       @default(now())
+
+  leaveRequests    LeaveRequest[]
+  leaveBalances    LeaveBalance[]
+
+  @@map("leave_types")
+}
+
+model LeaveBalance {
+  id          String    @id @default(uuid())
+  employeeId  String
+  leaveTypeId String
+  year        Int
+  allocated   Int
+  used        Int       @default(0)
+  remaining   Int
+  updatedAt   DateTime  @updatedAt
+
+  employee    Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  leaveType   LeaveType @relation(fields: [leaveTypeId], references: [id], onDelete: Cascade)
+
+  @@unique([employeeId, leaveTypeId, year])
+  @@map("leave_balances")
+}
+
+model LeaveRequest {
+  id                 String         @id @default(uuid())
+  employeeId         String
+  leaveTypeId        String
+  startDate          DateTime       @db.Date
+  endDate            DateTime       @db.Date
+  totalDays          Int
+  reason             String
+  status             ApprovalStatus @default(PENDING)
+  currentStep        Int            @default(1)
+  totalSteps         Int            @default(2)
+  assignedApproverId String?
+  approverComments   String?
+  createdAt          DateTime       @default(now())
+  approvedAt         DateTime?
+
+  employee           Employee       @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  leaveType          LeaveType      @relation(fields: [leaveTypeId], references: [id], onDelete: Cascade)
+
+  @@map("leave_requests")
+}
+
+// -----------------------------------------------------------------------------
+// MODULE 07: PAYROLL (STRICTLY NO OT)
+// -----------------------------------------------------------------------------
+model PayrollPeriod {
+  id                  String    @id @default(uuid())
+  code                String    @unique // e.g. "2026-10"
+  startDate           DateTime  @db.Date
+  endDate             DateTime  @db.Date
+  paymentDate         DateTime  @db.Date
+  status              String    @default("DRAFT") // DRAFT, REVIEW, APPROVED, PAID, LOCKED
+  totalGrossSalary    Decimal   @db.Decimal(15, 2)
+  totalSocialSecurity Decimal   @db.Decimal(15, 2)
+  totalIncomeTax      Decimal   @db.Decimal(15, 2)
+  totalNetPay         Decimal   @db.Decimal(15, 2)
+  employeeCount       Int
+  createdAt           DateTime  @default(now())
+
+  payslips            Payslip[]
+
+  @@map("payroll_periods")
+}
+
+model Payslip {
+  id                     String        @id @default(uuid())
+  payrollPeriodId        String
+  employeeId             String
+  baseSalary             Decimal       @db.Decimal(15, 2)
+  allowances             Decimal       @db.Decimal(15, 2)
+  grossSalary            Decimal       @db.Decimal(15, 2)
+  socialSecurityEmployee Decimal       @db.Decimal(15, 2) // 5.5% LSSO
+  socialSecurityEmployer Decimal       @db.Decimal(15, 2) // 6.0% LSSO
+  taxableIncome          Decimal       @db.Decimal(15, 2)
+  personalIncomeTax      Decimal       @db.Decimal(15, 2) // Lao PIT
+  otherDeductions        Decimal       @default(0) @db.Decimal(15, 2)
+  netPay                 Decimal       @db.Decimal(15, 2)
+  paymentStatus          String        @default("PAID")
+  calculatedAt           DateTime      @default(now())
+
+  payrollPeriod          PayrollPeriod @relation(fields: [payrollPeriodId], references: [id], onDelete: Cascade)
+  employee               Employee      @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@unique([payrollPeriodId, employeeId])
+  @@map("payslips")
+}
+
+// -----------------------------------------------------------------------------
+// MODULE 08: DISCIPLINE & WARNINGS
+// -----------------------------------------------------------------------------
+model DisciplinaryCase {
+  id           String               @id @default(uuid())
+  caseNumber   String               @unique
+  employeeId   String
+  incidentDate DateTime             @db.Date
+  category     String
+  severity     DisciplinarySeverity
+  description  String
+  actionTaken  String
+  status       String               @default("OPEN")
+  issuedBy     String
+  isConfidential Boolean            @default(true)
+  createdAt    DateTime             @default(now())
+
+  employee     Employee             @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@map("disciplinary_cases")
+}
+
+// -----------------------------------------------------------------------------
+// MODULE 09: EXPENSE CLAIMS
+// -----------------------------------------------------------------------------
+model ExpenseClaim {
+  id            String         @id @default(uuid())
+  claimNumber   String         @unique
+  employeeId    String
+  title         String
+  category      String
+  totalAmount   Decimal        @db.Decimal(15, 2)
+  currency      String         @default("LAK")
+  receiptsCount Int            @default(1)
+  status        ApprovalStatus @default(PENDING)
+  approverId    String?
+  approverComments String?
+  createdAt     DateTime       @default(now())
+
+  employee      Employee       @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@map("expense_claims")
+}
+
+// -----------------------------------------------------------------------------
+// MODULE 10: EMPLOYEE DEVELOPMENT
+// -----------------------------------------------------------------------------
+model PerformanceEvaluation {
+  id             String   @id @default(uuid())
+  employeeId     String
+  evaluatorId    String
+  period         String
+  score          Int
+  grade          String
+  strengths      String
+  areasToImprove String
+  goals          String
+  status         String   @default("APPROVED")
+  createdAt      DateTime @default(now())
+
+  employee       Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@map("performance_evaluations")
+}
+
+model TrainingCourse {
+  id            String   @id @default(uuid())
+  titleEn       String
+  titleLao      String
+  provider      String
+  startDate     DateTime @db.Date
+  endDate       DateTime @db.Date
+  location      String
+  capacity      Int
+  enrolledCount Int      @default(0)
+  status        String   @default("UPCOMING")
+  createdAt     DateTime @default(now())
+
+  @@map("training_courses")
+}
+
+// -----------------------------------------------------------------------------
+// MODULE 11: RECRUITMENT
+// -----------------------------------------------------------------------------
+model RecruitmentRequisition {
+  id                 String      @id @default(uuid())
+  reqNumber          String      @unique
+  departmentId       String
+  positionTitle      String
+  vacanciesCount     Int
+  minExperienceYears Int
+  budgetSalary       Decimal     @db.Decimal(15, 2)
+  status             String      @default("OPEN")
+  deadline           DateTime    @db.Date
+  createdAt          DateTime    @default(now())
+
+  department         Department  @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  candidates         Candidate[]
+
+  @@map("recruitment_requisitions")
+}
+
+model Candidate {
+  id            String                 @id @default(uuid())
+  requisitionId String
+  fullName      String
+  email         String
+  phone         String
+  stage         CandidateStage         @default(APPLIED)
+  interviewDate DateTime?
+  notes         String?
+  rating        Decimal?               @db.Decimal(3, 1)
+  appliedDate   DateTime               @default(now())
+
+  requisition   RecruitmentRequisition @relation(fields: [requisitionId], references: [id], onDelete: Cascade)
+
+  @@map("candidates")
+}
+
+// -----------------------------------------------------------------------------
+// MODULE 12: APPROVAL WORKFLOW
+// -----------------------------------------------------------------------------
+model ApprovalRequest {
+  id                   String         @id @default(uuid())
+  type                 String         // LEAVE, EXPENSE, ATTENDANCE_CORRECTION, INFO_UPDATE, RECRUITMENT, PAYROLL
+  referenceId          String
+  title                String
+  requesterId          String
+  requesterName        String
+  departmentName       String
+  amountOrDays         String?
+  currentStep          Int            @default(1)
+  totalSteps           Int            @default(2)
+  assignedApproverRole Role
+  assignedApproverId   String?
+  status               ApprovalStatus @default(PENDING)
+  createdAt            DateTime       @default(now())
+  updatedAt            DateTime       @updatedAt
+
+  actions              ApprovalAction[]
+
+  @@map("approval_requests")
+}
+
+model ApprovalAction {
+  id                String          @id @default(uuid())
+  approvalRequestId String
+  actorName         String
+  actorRole         Role
+  action            String          // SUBMITTED, APPROVED, REJECTED, RETURNED
+  comments          String?
+  timestamp         DateTime        @default(now())
+
+  approvalRequest   ApprovalRequest @relation(fields: [approvalRequestId], references: [id], onDelete: Cascade)
+
+  @@map("approval_actions")
+}
+
+// -----------------------------------------------------------------------------
+// MODULE 13: DOCUMENTS & ASSETS
+// -----------------------------------------------------------------------------
+model Asset {
+  id                 String    @id @default(uuid())
+  assetTag           String    @unique
+  name               String
+  category           String
+  model              String
+  serialNumber       String    @unique
+  assignedEmployeeId String?
+  assignmentDate     DateTime? @db.Date
+  status             String    @default("AVAILABLE")
+  createdAt          DateTime  @default(now())
+
+  assignedEmployee   Employee? @relation(fields: [assignedEmployeeId], references: [id])
+
+  @@map("assets")
+}
+
+// -----------------------------------------------------------------------------
+// MODULE 14: COMMUNICATION & NOTIFICATIONS
+// -----------------------------------------------------------------------------
+model Announcement {
+  id          String   @id @default(uuid())
+  titleLao    String
+  titleEn     String
+  contentLao  String
+  contentEn   String
+  category    String
+  isImportant Boolean  @default(false)
+  publishedBy String
+  publishedAt DateTime @default(now())
+
+  @@map("announcements")
+}
+
+model Notification {
+  id         String   @id @default(uuid())
+  userId     String
+  titleLao   String
+  titleEn    String
+  messageLao String
+  messageEn  String
+  type       String
+  isRead     Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  @@map("notifications")
+}
+
+// -----------------------------------------------------------------------------
+// MODULE 15: USERS, ROLES & AUDIT
+// -----------------------------------------------------------------------------
+model User {
+  id           String    @id @default(uuid())
+  username     String    @unique
+  email        String    @unique
+  passwordHash String
+  fullName     String
+  fullNameLao  String
+  role         Role      @default(EMPLOYEE)
+  employeeId   String?   @unique
+  departmentId String?
+  branchId     String?
+  isActive     Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  lastLogin    DateTime?
+
+  employee     Employee? @relation(fields: [employeeId], references: [id])
+
+  @@map("users")
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  userId    String
+  userName  String
+  userRole  Role
+  action    String
+  module    String
+  recordId  String?
+  details   String
+  ipAddress String
+  timestamp DateTime @default(now())
+
+  @@map("audit_logs")
+}

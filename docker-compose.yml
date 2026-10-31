@@ -1,0 +1,23 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: lhse-postgres
+    restart: always
+    environment:
+      POSTGRES_USER: lhse_admin
+      POSTGRES_PASSWORD: lhse_secure_password_2026
+      POSTGRES_DB: lhse_hrplus
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./prisma/schema.sql:/docker-entrypoint-initdb.d/01_init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U lhse_admin -d lhse_hrplus"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  pgdata:
+    driver: local
